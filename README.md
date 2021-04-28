@@ -1,2 +1,2 @@
-# 824-distributed-evoting
+# distributed-evoting
 Final project for 6.824
