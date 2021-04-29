@@ -44,7 +44,7 @@ func (vc *VoteCounter) Done() bool {
 }
 
 //
-// main/voter.go calls this function.
+// main/votecounter.go calls this function.
 //
 func MakeVoteCounter(committeeMembers []*labrpc.ClientEnd, me, nVoters int) *VoteCounter {
 	vc := &VoteCounter{}
