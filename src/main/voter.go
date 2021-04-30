@@ -28,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	vt := election.MakeVoter(make([]*labrpc.ClientEnd, 1), vote, 1)
+	vt := election.MakeVoter(make([]*labrpc.ClientEnd, 1), vote, 3, 7)
 	for vt.Done() == false {
 		time.Sleep(time.Second)
 	}
