@@ -92,12 +92,12 @@ func (vt *Voter) SendShares() {
 
 		// Send CountVote RPCs to everyone
 		for i := 0; i < len(vt.committeeMembers); i++ {
-			go func(id int64, vote int64, index int) {
-				args := CountVoteArgs{id, vote, index}
+			go func(id int64, vote int64, counter int) {
+				args := CountVoteArgs{id, vote}
 				reply := CountVoteReply{}
-				vt.sendCountVote(i, &args, &reply)
+				vt.sendCountVote(counter, &args, &reply)
 
-			}(vt.voterId, vt.shares[i], i+1)
+			}(vt.voterId, vt.shares[i], i)
 		}
 
 		vt.mu.Unlock()
@@ -109,7 +109,7 @@ func (vt *Voter) SendShares() {
 //  Send Count Votes RPC
 //
 func (vt *Voter) sendCountVote(counter int, args *CountVoteArgs, reply *CountVoteReply) {
-	if vt.killed() == false {
+	if !vt.killed() {
 		ok := vt.committeeMembers[counter].Call("VoteCounter.CountVote", args, reply)
 
 		if ok && !reply.Success {
