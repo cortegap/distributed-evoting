@@ -10,7 +10,9 @@ import (
 	"6.824/labrpc"
 )
 
-const voterTimeout int32 = 1000 // TODO: tune this
+// TODO: tune this
+const voterTimeout int32 = 1000
+const field int64 = 1003521817082138161
 
 type Voter struct {
 	mu   sync.Mutex
@@ -22,7 +24,6 @@ type Voter struct {
 
 	nShares int
 	shares  []int64
-	field   int64
 }
 
 func nrand(max int64) int64 {
@@ -37,7 +38,7 @@ func nrand(max int64) int64 {
 
 //
 // Function to create Shamir Shares
-// - Polynomial of degree vt.nShares over field vt.field
+// - Polynomial of degree vt.nShares over Z_field
 // - len(vt.committeeMembers) shares
 //
 func (vt *Voter) makeShares() {
@@ -50,7 +51,7 @@ func (vt *Voter) makeShares() {
 
 		coefficients[0] = int64(vt.vote)
 		for i := 1; i < vt.nShares; i++ {
-			val, _ := rand.Int(rand.Reader, big.NewInt(int64(vt.field)))
+			val, _ := rand.Int(rand.Reader, big.NewInt(field))
 			coefficients[i] = val.Int64()
 		}
 
@@ -76,7 +77,7 @@ func (vt *Voter) evalPolynimialL(coef []int64, x int64) int64 {
 		fx.Add(fx, monomial)
 	}
 
-	fx.Mod(fx, big.NewInt(int64(vt.field)))
+	fx.Mod(fx, big.NewInt(field))
 	return fx.Int64()
 }
 
@@ -144,7 +145,7 @@ func (vt *Voter) Done() bool {
 //
 // main/voter.go calls this function.
 //
-func MakeVoter(committeeMembers []*labrpc.ClientEnd, vote int, nShares int, field int64) *Voter {
+func MakeVoter(committeeMembers []*labrpc.ClientEnd, vote int, nShares int) *Voter {
 	vt := &Voter{}
 
 	vt.committeeMembers = committeeMembers
@@ -152,7 +153,6 @@ func MakeVoter(committeeMembers []*labrpc.ClientEnd, vote int, nShares int, fiel
 	vt.voterId = nrand(0)
 	vt.vote = vote
 	vt.shares = make([]int64, len(committeeMembers))
-	vt.field = field
 	vt.done = 0
 
 	go vt.SendShares()
