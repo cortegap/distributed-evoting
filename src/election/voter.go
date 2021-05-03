@@ -145,7 +145,7 @@ func (vt *Voter) Done() bool {
 //
 // main/voter.go calls this function.
 //
-func MakeVoter(committeeMembers []*labrpc.ClientEnd, vote int, nShares int) *Voter {
+func MakeVoter(committeeMembers []*labrpc.ClientEnd, nShares, vote int) *Voter {
 	vt := &Voter{}
 
 	vt.committeeMembers = committeeMembers

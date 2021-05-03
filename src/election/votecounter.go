@@ -14,6 +14,7 @@ type VoteCounter struct {
 	mu               sync.Mutex
 	committeeMembers []*labrpc.ClientEnd
 	me               int
+	nCounters        int
 	nVoters          int
 	votes            map[int64]int64
 	nShares          int
@@ -186,11 +187,12 @@ func (vc *VoteCounter) killed() bool {
 //
 // main/votecounter.go calls this function.
 //
-func MakeVoteCounter(committeeMembers []*labrpc.ClientEnd, me, nVoters int, nShares int) *VoteCounter {
+func MakeVoteCounter(committeeMembers []*labrpc.ClientEnd, me, nCounters, nVoters, nShares int) *VoteCounter {
 	vc := &VoteCounter{}
 
 	vc.committeeMembers = committeeMembers
 	vc.me = me
+	vc.nCounters = nCounters
 	vc.nVoters = nVoters
 	vc.votes = make(map[int64]int64)
 	vc.nShares = nShares
