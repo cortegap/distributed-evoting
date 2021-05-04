@@ -50,7 +50,7 @@ func (vt *Voter) makeShares() {
 		coefficients := make([]int64, vt.nShares+1)
 
 		coefficients[0] = int64(vt.vote)
-		for i := 1; i < vt.nShares; i++ {
+		for i := 1; i < vt.nShares+1; i++ {
 			val, _ := rand.Int(rand.Reader, big.NewInt(field))
 			coefficients[i] = val.Int64()
 		}
@@ -69,12 +69,13 @@ func (vt *Voter) makeShares() {
 //
 func (vt *Voter) evalPolynimialL(coef []int64, x int64) int64 {
 	fx := big.NewInt(0)
+	bigX := big.NewInt(x)
 
 	for exp, c := range coef {
-		var monomial *big.Int
-		monomial.Exp(big.NewInt(x), big.NewInt(int64(exp)), nil) // x^exp
-		monomial.Mul(monomial, big.NewInt(c))
-		fx.Add(fx, monomial)
+		var monomial big.Int
+		monomial = *monomial.Exp(bigX, big.NewInt(int64(exp)), big.NewInt(0)) // x^exp
+		monomial.Mul(&monomial, big.NewInt(c))
+		fx.Add(fx, &monomial)
 	}
 
 	fx.Mod(fx, big.NewInt(field))

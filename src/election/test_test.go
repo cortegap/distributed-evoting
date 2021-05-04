@@ -135,7 +135,7 @@ func (cfg *config) startVoter(i, vote int) {
 		cfg.net.Connect(cfg.voterEndnames[i][j], j)
 	}
 
-	vt := MakeVoter(ends, cfg.nCounters, 0)
+	vt := MakeVoter(ends, cfg.nCounters, vote)
 
 	cfg.mu.Lock()
 	cfg.voters[i] = vt
