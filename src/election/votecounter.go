@@ -54,7 +54,7 @@ func (vc *VoteCounter) CountVote(args *CountVoteArgs, reply *CountVoteReply) {
 
 		vc.votes[args.VoterId] = args.Vote
 
-		if len(vc.votes) == vc.nVoters {
+		if len(vc.votes) == vc.nVoters { // TODO add once?
 			go vc.ProcessElection()
 		}
 	}
@@ -94,6 +94,8 @@ func (vc *VoteCounter) AddVotes() int64 {
 		for _, val := range vc.votes {
 			vc.totalCounts[vc.me+1] += val
 		}
+
+		vc.totalCounts[vc.me+1] %= field
 
 		return vc.totalCounts[vc.me+1]
 	}
@@ -145,7 +147,17 @@ func (vc *VoteCounter) computeWinner() {
 			total += partial
 		}
 
-		vc.winner = int(int64(total) % field)
+		totalVotes := int64(total) % field
+
+		if totalVotes < 0 {
+			totalVotes += field
+		}
+
+		if int(totalVotes) > vc.nVoters/2 {
+			vc.winner = 1
+		} else {
+			vc.winner = 0
+		}
 	}
 }
 

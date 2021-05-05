@@ -12,7 +12,8 @@ import (
 
 // TODO: tune this
 const voterTimeout int32 = 1000
-const field int64 = 1003521817082138161
+
+const field int64 = 1104637706180507
 
 type Voter struct {
 	mu   sync.Mutex
@@ -46,11 +47,11 @@ func (vt *Voter) makeShares() {
 		vt.mu.Lock()
 		defer vt.mu.Unlock()
 
-		// Polynomial of degree nShares with coefficients in field Z_field
-		coefficients := make([]int64, vt.nShares+1)
+		// Polynomial of degree nShares-1 with coefficients in field Z_field
+		coefficients := make([]int64, vt.nShares)
 
 		coefficients[0] = int64(vt.vote)
-		for i := 1; i < vt.nShares+1; i++ {
+		for i := 1; i < vt.nShares; i++ {
 			val, _ := rand.Int(rand.Reader, big.NewInt(field))
 			coefficients[i] = val.Int64()
 		}
@@ -111,11 +112,7 @@ func (vt *Voter) SendShares() {
 //
 func (vt *Voter) sendCountVote(counter int, args *CountVoteArgs, reply *CountVoteReply) {
 	if !vt.killed() {
-		ok := vt.committeeMembers[counter].Call("VoteCounter.CountVote", args, reply)
-
-		if ok && !reply.Success {
-			vt.Kill()
-		}
+		vt.committeeMembers[counter].Call("VoteCounter.CountVote", args, reply) // TODO -> ok?
 	}
 }
 

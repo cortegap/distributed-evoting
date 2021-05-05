@@ -189,11 +189,26 @@ func (cfg *config) setunreliable(unrel bool) {
 	cfg.net.Reliable(!unrel)
 }
 
-func TestInitialElection(t *testing.T) {
+func TestInitialElection0(t *testing.T) {
+	fmt.Println("Starting simple test - 0 wins")
 	cfg := makeConfig(t, 3, 5, []int{0, 0, 0, 1, 1})
 
 	voteResult := cfg.voteResult()
 	if voteResult != 0 {
 		cfg.t.Fatalf("expecting result of 0, but got %v", voteResult)
+	} else {
+		fmt.Println("ok")
+	}
+}
+
+func TestInitialElection1(t *testing.T) {
+	fmt.Println("Starting simple test - 1 wins")
+	cfg := makeConfig(t, 3, 5, []int{0, 0, 1, 1, 1})
+
+	voteResult := cfg.voteResult()
+	if voteResult != 1 {
+		cfg.t.Fatalf("expecting result of 1, but got %v", voteResult)
+	} else {
+		fmt.Println("ok")
 	}
 }
