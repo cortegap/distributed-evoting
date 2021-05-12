@@ -62,7 +62,8 @@ func makeConfig(t *testing.T, nCounters, nVoters int, votes []int, unreliable bo
 	cfg.nVoters = nVoters
 	cfg.counters = make([]*VoteCounter, cfg.nCounters)
 	cfg.voters = make([]*Voter, cfg.nVoters)
-	cfg.connected = make([]bool, cfg.nCounters)
+	cfg.counterConnected = make([]bool, cfg.nCounters)
+	cfg.voterConnected = make([]bool, cfg.nVoters)
 	cfg.counterEndnames = make([][]string, cfg.nCounters)
 	cfg.voterEndnames = make([][]string, cfg.nVoters)
 
@@ -138,11 +139,11 @@ func (cfg *config) startVoter(i, vote int) {
 func (cfg *config) connectCounter(i int) {
 	// fmt.Printf("connect(%d)\n", i)
 
-	cfg.connected[i] = true
+	cfg.counterConnected[i] = true
 
 	// outgoing ClientEnds
 	for j := 0; j < cfg.nCounters; j++ {
-		if cfg.connected[j] {
+		if cfg.counterConnected[j] {
 			endname := cfg.counterEndnames[i][j]
 			cfg.net.Enable(endname, true)
 		}
@@ -150,7 +151,7 @@ func (cfg *config) connectCounter(i int) {
 
 	// incoming counter ClientEnds
 	for j := 0; j < cfg.nCounters; j++ {
-		if cfg.connected[j] {
+		if cfg.counterConnected[j] {
 			endname := cfg.counterEndnames[j][i]
 			cfg.net.Enable(endname, true)
 		}
@@ -158,8 +159,69 @@ func (cfg *config) connectCounter(i int) {
 
 	// incoming voter ClientEnds
 	for j := 0; j < cfg.nVoters; j++ {
-		endname := cfg.voterEndnames[j][i]
-		cfg.net.Enable(endname, true)
+		if cfg.voterConnected[j] {
+			endname := cfg.voterEndnames[j][i]
+			cfg.net.Enable(endname, true)
+		}
+	}
+}
+
+// attach server i to the net.
+func (cfg *config) disconnectCounter(i int) {
+	// fmt.Printf("connect(%d)\n", i)
+
+	cfg.counterConnected[i] = false
+
+	// outgoing ClientEnds
+	for j := 0; j < cfg.nCounters; j++ {
+		if cfg.counterEndnames[i] != nil {
+			endname := cfg.counterEndnames[i][j]
+			cfg.net.Enable(endname, false)
+		}
+	}
+
+	// incoming counter ClientEnds
+	for j := 0; j < cfg.nCounters; j++ {
+		if cfg.counterEndnames[j] != nil {
+			endname := cfg.counterEndnames[j][i]
+			cfg.net.Enable(endname, false)
+		}
+	}
+
+	// incoming voter ClientEnds
+	for j := 0; j < cfg.nVoters; j++ {
+		if cfg.voterEndnames[j] != nil {
+			endname := cfg.voterEndnames[j][i]
+			cfg.net.Enable(endname, false)
+		}
+	}
+}
+
+func (cfg *config) connectVoter(i int) {
+	// fmt.Printf("connect(%d)\n", i)
+
+	cfg.counterConnected[i] = true
+
+	// outgoing voter ClientEnds
+	for j := 0; j < cfg.nCounters; j++ {
+		if cfg.counterConnected[j] {
+			endname := cfg.voterEndnames[i][j]
+			cfg.net.Enable(endname, true)
+		}
+	}
+}
+
+func (cfg *config) disconnectVoter(i int) {
+	// fmt.Printf("connect(%d)\n", i)
+
+	cfg.counterConnected[i] = false
+
+	// outgoing voter ClientEnds
+	for j := 0; j < cfg.nCounters; j++ {
+		if cfg.voterEndnames[i] != nil {
+			endname := cfg.voterEndnames[i][j]
+			cfg.net.Enable(endname, false)
+		}
 	}
 }
 
