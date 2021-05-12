@@ -81,6 +81,10 @@ func makeConfig(t *testing.T, nCounters, nVoters int, votes []int, unreliable bo
 		cfg.connectCounter(i)
 	}
 
+	for i := 0; i < cfg.nVoters; i++ {
+		cfg.connectVoter(i)
+	}
+
 	return cfg
 }
 
@@ -233,7 +237,7 @@ func (cfg *config) disconnectCounter(i int) {
 func (cfg *config) connectVoter(i int) {
 	// fmt.Printf("connect(%d)\n", i)
 
-	cfg.counterConnected[i] = true
+	cfg.voterConnected[i] = true
 
 	// outgoing voter ClientEnds
 	for j := 0; j < cfg.nCounters; j++ {
@@ -247,7 +251,7 @@ func (cfg *config) connectVoter(i int) {
 func (cfg *config) disconnectVoter(i int) {
 	// fmt.Printf("connect(%d)\n", i)
 
-	cfg.counterConnected[i] = false
+	cfg.voterConnected[i] = false
 
 	// outgoing voter ClientEnds
 	for j := 0; j < cfg.nCounters; j++ {
