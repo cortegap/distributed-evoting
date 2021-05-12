@@ -19,9 +19,10 @@ type Voter struct {
 	mu   sync.Mutex
 	done int32
 
-	committeeMembers []*labrpc.ClientEnd
-	voterId          int64
-	vote             int
+	committeeMembers  []*labrpc.ClientEnd
+	submissionSuccess []bool
+	voterId           int64
+	vote              int
 
 	nShares int
 	shares  []int64
@@ -94,12 +95,14 @@ func (vt *Voter) SendShares() {
 
 		// Send CountVote RPCs to everyone
 		for i := 0; i < len(vt.committeeMembers); i++ {
-			go func(id int64, vote int64, counter int) {
-				args := CountVoteArgs{id, vote}
-				reply := CountVoteReply{}
-				vt.sendCountVote(counter, &args, &reply)
+			if !vt.submissionSuccess[i] {
+				go func(id int64, vote int64, counter int) {
+					args := CountVoteArgs{id, vote}
+					reply := CountVoteReply{}
+					vt.sendCountVote(counter, &args, &reply)
 
-			}(vt.voterId, vt.shares[i], i)
+				}(vt.voterId, vt.shares[i], i)
+			}
 		}
 
 		vt.mu.Unlock()
@@ -112,7 +115,31 @@ func (vt *Voter) SendShares() {
 //
 func (vt *Voter) sendCountVote(counter int, args *CountVoteArgs, reply *CountVoteReply) {
 	if !vt.killed() {
-		vt.committeeMembers[counter].Call("VoteCounter.CountVote", args, reply) // TODO -> ok?
+		ok := vt.committeeMembers[counter].Call("VoteCounter.CountVote", args, reply)
+
+		if ok && reply.Success {
+			// Update submissionSuccess as done for this server
+			vt.mu.Lock()
+			vt.submissionSuccess[counter] = true
+
+			// Check if we finished
+			count := 0
+			for _, done := range vt.submissionSuccess {
+				if done {
+					count++
+				} else {
+					break
+				}
+			}
+
+			if count == len(vt.committeeMembers) {
+				vt.done = 1
+				vt.mu.Unlock()
+				vt.Kill()
+			} else {
+				vt.mu.Unlock()
+			}
+		}
 	}
 }
 
@@ -151,6 +178,7 @@ func MakeVoter(committeeMembers []*labrpc.ClientEnd, nShares, vote int) *Voter {
 	vt.voterId = nrand(0)
 	vt.vote = vote
 	vt.shares = make([]int64, len(committeeMembers))
+	vt.submissionSuccess = make([]bool, len(committeeMembers))
 	vt.done = 0
 
 	go vt.SendShares()
