@@ -85,6 +85,7 @@ func makeConfig(t *testing.T, nCounters, nVoters int, votes []int, unreliable bo
 }
 
 func (cfg *config) startCounter(i int) {
+	cfg.crashCounter(i)
 
 	// a fresh set of outgoing ClientEnd names.
 	// so that old crashed instance's ClientEnds can't send.
@@ -112,7 +113,24 @@ func (cfg *config) startCounter(i int) {
 	cfg.net.AddServer(i, srv)
 }
 
+func (cfg *config) crashCounter(i int) {
+	cfg.disconnectCounter(i)
+	cfg.net.DeleteServer(i) // disable client connections to the server.
+
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	vc := cfg.counters[i]
+	if vc != nil {
+		cfg.mu.Unlock()
+		vc.Kill()
+		cfg.mu.Lock()
+		cfg.counters[i] = nil
+	}
+}
+
 func (cfg *config) startVoter(i, vote int) {
+	cfg.crashVoter(i)
 
 	// a fresh set of outgoing ClientEnd names.
 	// so that old crashed instance's ClientEnds can't send.
@@ -133,6 +151,21 @@ func (cfg *config) startVoter(i, vote int) {
 	cfg.mu.Lock()
 	cfg.voters[i] = vt
 	cfg.mu.Unlock()
+}
+
+func (cfg *config) crashVoter(i int) {
+	cfg.disconnectVoter(i)
+
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	vt := cfg.voters[i]
+	if vt != nil {
+		cfg.mu.Unlock()
+		vt.Kill()
+		cfg.mu.Lock()
+		cfg.voters[i] = nil
+	}
 }
 
 // attach server i to the net.
@@ -225,6 +258,25 @@ func (cfg *config) disconnectVoter(i int) {
 	}
 }
 
+func (cfg *config) setunreliable(unrel bool) {
+	cfg.net.Reliable(!unrel)
+}
+
+func (cfg *config) cleanup() {
+	for i := range cfg.counters {
+		if cfg.counters[i] != nil {
+			cfg.counters[i].Kill()
+		}
+	}
+	for i := range cfg.voters {
+		if cfg.voters[i] != nil {
+			cfg.voters[i].Kill()
+		}
+	}
+
+	cfg.net.Cleanup()
+}
+
 func (cfg *config) voteResult() int {
 	for iters := 0; iters < 10; iters++ {
 		time.Sleep(1000 * time.Millisecond)
@@ -237,8 +289,4 @@ func (cfg *config) voteResult() int {
 		}
 	}
 	return -1
-}
-
-func (cfg *config) setunreliable(unrel bool) {
-	cfg.net.Reliable(!unrel)
 }
