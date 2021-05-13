@@ -23,31 +23,6 @@ const (
 	Failed   Stage = -1
 )
 
-type VoteCounter struct {
-	mu    sync.Mutex
-	dead  int32 // set by Kill()
-	stage Stage
-
-	committeeMembers []*labrpc.ClientEnd
-	me               int
-	nCounters        int
-	nVoters          int
-	nShares          int
-
-	votes       map[int64]int64
-	winner      int
-	totalCounts map[int]int64 // Holds sum of all the cm's
-}
-
-type CountVoteArgs struct {
-	VoterId int64
-	Vote    int64
-}
-
-type CountVoteReply struct {
-	Success bool
-}
-
 type SendTotalArgs struct {
 	Index int
 	Value int64
@@ -55,6 +30,61 @@ type SendTotalArgs struct {
 
 type SendTotalReply struct {
 	Success bool
+}
+
+type VoteCounter struct {
+	mu    sync.Mutex
+	dead  int32 // set by Kill()
+	stage Stage
+
+	committeeMembers []*labrpc.ClientEnd
+	me               int
+
+	votes             map[int64]int64
+	nVoters           int
+	submissionSuccess map[int]bool // TODO: Decide on data structure
+
+	totalCounts map[int]int64 // Holds sum of all the cm's
+	threshold   int
+	winner      int
+}
+
+//
+// main/votecounter.go calls this function.
+//
+func MakeVoteCounter(committeeMembers []*labrpc.ClientEnd, me, nVoters, threshold int) *VoteCounter {
+	vc := &VoteCounter{}
+
+	vc.stage = Open
+
+	vc.committeeMembers = committeeMembers
+	vc.me = me
+	vc.nVoters = nVoters
+	vc.threshold = threshold
+
+	vc.votes = make(map[int64]int64)
+	vc.winner = -1
+	vc.totalCounts = make(map[int]int64)
+
+	go vc.electionTimeout()
+
+	return vc
+}
+
+func (vc *VoteCounter) electionTimeout() {
+	time.Sleep(time.Duration(votingTimeout) * time.Millisecond)
+
+	if !vc.killed() {
+
+		vc.mu.Lock()
+		if vc.stage == Ready {
+			go vc.ProcessElection()
+			go vc.exchangeTimeout()
+		} else {
+			vc.stage = Failed
+		}
+		vc.mu.Unlock()
+	}
 }
 
 func (vc *VoteCounter) CountVote(args *CountVoteArgs, reply *CountVoteReply) {
@@ -146,7 +176,7 @@ func (vc *VoteCounter) ShareTotal(args *SendTotalArgs, reply *SendTotalReply) {
 		vc.totalCounts[args.Index] = args.Value
 		vc.mu.Unlock()
 
-		if done, _ := vc.Done(); !done && len(vc.totalCounts) >= vc.nShares {
+		if done, _ := vc.Done(); !done && len(vc.totalCounts) >= vc.threshold {
 			go vc.computeWinner()
 		}
 	}
@@ -211,22 +241,6 @@ func (vc *VoteCounter) Done() (bool, int) {
 	return done, winner
 }
 
-func (vc *VoteCounter) electionTimeout() {
-	time.Sleep(time.Duration(votingTimeout) * time.Millisecond)
-
-	if !vc.killed() {
-
-		vc.mu.Lock()
-		if vc.stage == Ready {
-			go vc.ProcessElection()
-			go vc.exchangeTimeout()
-		} else {
-			vc.stage = Failed
-		}
-		vc.mu.Unlock()
-	}
-}
-
 func (vc *VoteCounter) exchangeTimeout() {
 	time.Sleep(time.Duration(exchangeTimeout) * time.Millisecond)
 
@@ -234,7 +248,7 @@ func (vc *VoteCounter) exchangeTimeout() {
 		done, _ := vc.Done()
 		vc.mu.Lock()
 
-		if len(vc.totalCounts) >= vc.nShares {
+		if len(vc.totalCounts) >= vc.threshold {
 			if !done {
 				go vc.computeWinner()
 			}
@@ -261,25 +275,4 @@ func (vc *VoteCounter) Kill() {
 func (vc *VoteCounter) killed() bool {
 	z := atomic.LoadInt32(&vc.dead)
 	return z == 1
-}
-
-//
-// main/votecounter.go calls this function.
-//
-func MakeVoteCounter(committeeMembers []*labrpc.ClientEnd, me, nCounters, nVoters, nShares int) *VoteCounter {
-	vc := &VoteCounter{}
-
-	vc.committeeMembers = committeeMembers
-	vc.me = me
-	vc.stage = Open
-	vc.nCounters = nCounters
-	vc.nVoters = nVoters
-	vc.votes = make(map[int64]int64)
-	vc.nShares = nShares
-	vc.totalCounts = make(map[int]int64)
-	vc.winner = -1
-
-	go vc.electionTimeout()
-
-	return vc
 }

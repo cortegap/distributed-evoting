@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"sync"
 	"testing"
-	"time"
 
 	crand "crypto/rand"
 
@@ -28,6 +27,11 @@ type config struct {
 	counterEndnames  [][]string // the port file names each sends to
 	voterEndnames    [][]string
 	// saved     []*Persister
+}
+
+type VoterPersister struct {
+	mu         sync.Mutex
+	voteShares []byte
 }
 
 func makeSeed() int64 {
@@ -279,18 +283,4 @@ func (cfg *config) cleanup() {
 	}
 
 	cfg.net.Cleanup()
-}
-
-func (cfg *config) voteResult() int {
-	for iters := 0; iters < 10; iters++ {
-		time.Sleep(1000 * time.Millisecond)
-
-		for i := 0; i < cfg.nCounters; i++ {
-			done, vote := cfg.counters[i].Done()
-			if done {
-				return vote
-			}
-		}
-	}
-	return -1
 }

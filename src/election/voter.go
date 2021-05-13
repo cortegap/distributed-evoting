@@ -1,32 +1,20 @@
 package election
 
 import (
+	"bytes"
 	"crypto/rand"
 	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"6.824/labgob"
 	"6.824/labrpc"
 )
 
 // TODO: tune this
-const voterTimeout int32 = 1000
-
+const voterTimeout int32 = 100
 const field int64 = 1104637706180507
-
-type Voter struct {
-	mu   sync.Mutex
-	done int32
-
-	committeeMembers  []*labrpc.ClientEnd
-	submissionSuccess []bool
-	voterId           int64
-	vote              int
-
-	nShares int
-	shares  []int64
-}
 
 func nrand(max int64) int64 {
 	bigmax := big.NewInt(max)
@@ -38,38 +26,9 @@ func nrand(max int64) int64 {
 	return x
 }
 
-//
-// Function to create Shamir Shares
-// - Polynomial of degree vt.nShares over Z_field
-// - len(vt.committeeMembers) shares
-//
-func (vt *Voter) makeShares() {
-	if !vt.killed() {
-		vt.mu.Lock()
-		defer vt.mu.Unlock()
-
-		// Polynomial of degree nShares-1 with coefficients in field Z_field
-		coefficients := make([]int64, vt.nShares)
-
-		coefficients[0] = int64(vt.vote)
-		for i := 1; i < vt.nShares; i++ {
-			val, _ := rand.Int(rand.Reader, big.NewInt(field))
-			coefficients[i] = val.Int64()
-		}
-
-		// Compute shares. For each committe member i, evaluate polynomial
-		// at x = i + 1
-		for i := range vt.shares {
-			vt.shares[i] = vt.evalPolynimialL(coefficients, int64(i+1))
-		}
-	}
-}
-
-//
 // Evaluate polynomial
 // f(x) = coef[0] + coef[0]x + coef[0]x^2 + ...
-//
-func (vt *Voter) evalPolynimialL(coef []int64, x int64) int64 {
+func evalPolynimialL(coef []int64, x int64) int64 {
 	fx := big.NewInt(0)
 	bigX := big.NewInt(x)
 
@@ -84,15 +43,120 @@ func (vt *Voter) evalPolynimialL(coef []int64, x int64) int64 {
 	return fx.Int64()
 }
 
+type CountVoteArgs struct {
+	VoterId int64
+	Vote    int64
+}
+
+type CountVoteReply struct {
+	Success bool
+}
+
+type Voter struct {
+	mu   sync.Mutex
+	dead int32
+
+	voterId            int64
+	persister          Persister
+	committeeMembers   []*labrpc.ClientEnd
+	submissionSuccess  []bool
+	nSubmissionSuccess int
+
+	vote      int
+	shares    []int64
+	threshold int
+}
+
+type Persister interface {
+	readPersistState() []byte
+	writePersistState([]byte)
+}
+
+//
+// main/voter.go calls this function.
+//
+func MakeVoter(committeeMembers []*labrpc.ClientEnd, vote, threshold int, persister Persister) *Voter {
+	vt := &Voter{}
+
+	vt.voterId = nrand(0)
+	vt.persister = persister
+	vt.committeeMembers = committeeMembers
+	vt.submissionSuccess = make([]bool, len(committeeMembers))
+
+	vt.vote = vote
+	vt.shares = make([]int64, len(committeeMembers))
+	vt.threshold = threshold
+
+	if !vt.readPersist() {
+		vt.makeShares()
+		vt.persist()
+	}
+
+	return vt
+}
+
+func (vt *Voter) readPersist() bool {
+	data := vt.persister.readPersistState()
+
+	if data == nil || len(data) < 1 { // bootstrap without any state?
+		return false
+	}
+
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var vote int
+	var shares []int64
+
+	if d.Decode(&vote) != nil || d.Decode(&shares) != nil {
+		panic("Error decoding persist data")
+	} else if vt.vote != vote {
+		panic("Error decoding persist data")
+	} else {
+		vt.shares = shares
+	}
+
+	return true
+}
+
+func (vt *Voter) persist() {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(vt.vote)
+	e.Encode(vt.shares)
+	data := w.Bytes()
+	vt.persister.writePersistState(data)
+}
+
+//
+// Function to create Shamir Shares
+// - Polynomial of degree nShares over Z_field
+// - len(vt.committeeMembers) shares
+//
+func (vt *Voter) makeShares() {
+	// Polynomial of degree nShares-1 with coefficients in field Z_field
+	coefficients := make([]int64, vt.threshold)
+
+	coefficients[0] = int64(vt.vote)
+	for i := 1; i < vt.threshold; i++ {
+		val, _ := rand.Int(rand.Reader, big.NewInt(field))
+		coefficients[i] = val.Int64()
+	}
+
+	// Compute shares. For each committe member i, evaluate polynomial
+	// at x = i + 1
+	for i := range vt.shares {
+		vt.shares[i] = evalPolynimialL(coefficients, int64(i+1))
+	}
+}
+
 //
 // Send votes to the vote counter until the end
 //
-func (vt *Voter) SendShares() {
-	vt.makeShares()
+func (vt *Voter) Vote() {
+	vt.mu.Lock()
+	defer vt.mu.Unlock()
 
-	for !vt.killed() {
-		vt.mu.Lock()
-
+	for !vt.killed() && vt.nSubmissionSuccess < len(vt.shares) {
 		// Send CountVote RPCs to everyone
 		for i := 0; i < len(vt.committeeMembers); i++ {
 			if !vt.submissionSuccess[i] {
@@ -107,6 +171,7 @@ func (vt *Voter) SendShares() {
 
 		vt.mu.Unlock()
 		time.Sleep(time.Duration(voterTimeout) * time.Millisecond)
+		vt.mu.Lock()
 	}
 }
 
@@ -114,49 +179,25 @@ func (vt *Voter) SendShares() {
 //  Send Count Votes RPC
 //
 func (vt *Voter) sendCountVote(counter int, args *CountVoteArgs, reply *CountVoteReply) {
-	if !vt.killed() {
-		ok := vt.committeeMembers[counter].Call("VoteCounter.CountVote", args, reply)
+	ok := vt.committeeMembers[counter].Call("VoteCounter.CountVote", args, reply)
 
-		if ok && reply.Success {
-			// Update submissionSuccess as done for this server
-			vt.mu.Lock()
+	if ok && reply.Success {
+		// Update submissionSuccess as done for this server
+		vt.mu.Lock()
+		if !vt.submissionSuccess[counter] {
 			vt.submissionSuccess[counter] = true
-
-			// Check if we finished
-			count := 0
-			for _, done := range vt.submissionSuccess {
-				if done {
-					count++
-				} else {
-					break
-				}
-			}
-
-			if count == len(vt.committeeMembers) {
-				vt.done = 1
-				vt.mu.Unlock()
-				vt.Kill()
-			} else {
-				vt.mu.Unlock()
-			}
+			vt.nSubmissionSuccess++
 		}
+		vt.mu.Unlock()
 	}
 }
 
-//
-// The tester doesn't halt goroutines created after each test,
-// but it does call the Kill() method. The use of atomic avoids the
-// need for a lock.
-//
 func (vt *Voter) Kill() {
-	atomic.StoreInt32(&vt.done, 1)
+	atomic.StoreInt32(&vt.dead, 1)
 }
 
-//
-// Check whether Kill() has been called.
-//
 func (vt *Voter) killed() bool {
-	z := atomic.LoadInt32(&vt.done)
+	z := atomic.LoadInt32(&vt.dead)
 	return z == 1
 }
 
@@ -164,24 +205,5 @@ func (vt *Voter) Done() bool {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
 
-	return vt.done == 1
-}
-
-//
-// main/voter.go calls this function.
-//
-func MakeVoter(committeeMembers []*labrpc.ClientEnd, nShares, vote int) *Voter {
-	vt := &Voter{}
-
-	vt.committeeMembers = committeeMembers
-	vt.nShares = nShares
-	vt.voterId = nrand(0)
-	vt.vote = vote
-	vt.shares = make([]int64, len(committeeMembers))
-	vt.submissionSuccess = make([]bool, len(committeeMembers))
-	vt.done = 0
-
-	go vt.SendShares()
-
-	return vt
+	return vt.nSubmissionSuccess == len(vt.shares)
 }
