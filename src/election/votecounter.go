@@ -12,30 +12,47 @@ const receiveTotalsTimeout int32 = 500
 const votingTimeout int32 = 3000
 const exchangeTimeout int32 = 3000
 
-// Possible states for a server during election day
-type Stage int
+//	Compute the winner of the election
+func computeWinner(shares map[int]int64, nVoters int) int {
+	total := float64(0)
+	for xi, yi := range shares {
+		partial := float64(yi)
+		for x := range shares {
+			if xi != x {
+				den := x - xi
+				num := x
+				var fraction float64 = float64(num) / float64(den)
+				partial *= fraction
+			}
+		}
+		total += partial
+	}
 
-const (
-	Open     Stage = 0
-	Ready    Stage = 1
-	Counting Stage = 2
-	Done     Stage = 3
-	Failed   Stage = -1
-)
+	totalVotes := int64(total) % field
 
-type SendTotalArgs struct {
+	if totalVotes < 0 {
+		totalVotes += field
+	}
+
+	if int(totalVotes) > nVoters/2 {
+		return 1
+	} else {
+		return 0
+	}
+}
+
+type CountTotalArgs struct {
 	Index int
 	Value int64
 }
 
-type SendTotalReply struct {
+type CountTotalReply struct {
 	Success bool
 }
 
 type VoteCounter struct {
-	mu    sync.Mutex
-	dead  int32 // set by Kill()
-	stage Stage
+	mu   sync.Mutex
+	dead int32 // set by Kill()
 
 	committeeMembers []*labrpc.ClientEnd
 	me               int
@@ -55,166 +72,99 @@ type VoteCounter struct {
 func MakeVoteCounter(committeeMembers []*labrpc.ClientEnd, me, nVoters, threshold int) *VoteCounter {
 	vc := &VoteCounter{}
 
-	vc.stage = Open
-
 	vc.committeeMembers = committeeMembers
 	vc.me = me
-	vc.nVoters = nVoters
-	vc.threshold = threshold
 
 	vc.votes = make(map[int64]int64)
-	vc.winner = -1
-	vc.totalCounts = make(map[int]int64)
+	vc.nVoters = nVoters
+	vc.submissionSuccess = make(map[int]bool)
 
-	go vc.electionTimeout()
+	vc.totalCounts = make(map[int]int64)
+	vc.threshold = threshold
+	vc.winner = -1
 
 	return vc
-}
-
-func (vc *VoteCounter) electionTimeout() {
-	time.Sleep(time.Duration(votingTimeout) * time.Millisecond)
-
-	if !vc.killed() {
-
-		vc.mu.Lock()
-		if vc.stage == Ready {
-			go vc.ProcessElection()
-			go vc.exchangeTimeout()
-		} else {
-			vc.stage = Failed
-		}
-		vc.mu.Unlock()
-	}
 }
 
 func (vc *VoteCounter) CountVote(args *CountVoteArgs, reply *CountVoteReply) {
 	vc.mu.Lock()
 	defer vc.mu.Unlock()
 
-	if !vc.killed() && vc.stage == Open {
+	vc.votes[args.VoterId] = args.Vote
+	reply.Success = true
 
-		_, ok := vc.votes[args.VoterId]
-		if len(vc.votes) == vc.nVoters && !ok {
-			reply.Success = false
-			return
-		}
+	_, shareTotalSent := vc.totalCounts[vc.me+1]
+	if len(vc.votes) == vc.nVoters && !shareTotalSent {
+		// TODO: Counter ready. Send agregated
+		vc.addVotes()
 
-		vc.votes[args.VoterId] = args.Vote
-		reply.Success = true
-
-		if len(vc.votes) == vc.nVoters {
-			vc.stage = Ready
-		}
+		go vc.sendShareTotal()
 	}
-}
-
-//
-// Count the votes, and announce the winner (not fault tolerant)
-//
-func (vc *VoteCounter) ProcessElection() {
-	// Add the votes that should be counted
-	vc.AddVotes()
-
-	vc.mu.Lock()
-	for vc.stage == Ready { // Send sum to other CMs
-		vc.mu.Unlock()
-		for i := 0; i < len(vc.committeeMembers); i++ {
-			if i != vc.me {
-				go func(counter int, index int, total int64) {
-					args := SendTotalArgs{index, total}
-					reply := SendTotalReply{}
-					vc.sendShareTotal(counter, &args, &reply)
-
-				}(i, vc.me+1, vc.totalCounts[vc.me+1])
-			}
-		}
-
-		time.Sleep(time.Duration(receiveTotalsTimeout) * time.Millisecond)
-		vc.mu.Lock()
-	}
-	vc.mu.Unlock()
 }
 
 //
 // Add all of the votes
 //
-func (vc *VoteCounter) AddVotes() int64 {
-	if !vc.killed() {
-		vc.mu.Lock()
-		defer vc.mu.Unlock()
-
-		vc.totalCounts[vc.me+1] = 0
-		for _, val := range vc.votes {
-			vc.totalCounts[vc.me+1] += val
-		}
-
-		vc.totalCounts[vc.me+1] %= field
-
-		return vc.totalCounts[vc.me+1]
+func (vc *VoteCounter) addVotes() int64 {
+	vc.totalCounts[vc.me+1] = 0
+	for _, val := range vc.votes {
+		vc.totalCounts[vc.me+1] += val
 	}
+
+	vc.totalCounts[vc.me+1] %= field
+
+	return vc.totalCounts[vc.me+1]
 
 	return 0
 }
 
 //
-// Send RPC with the sum of votes to the other vote counters
-// (not fault tolerant)
+// Count the votes, and announce the winner (not fault tolerant)
 //
-func (vc *VoteCounter) sendShareTotal(counter int, args *SendTotalArgs, reply *SendTotalReply) {
-	if !vc.killed() {
-		vc.committeeMembers[counter].Call("VoteCounter.ShareTotal", args, reply)
+func (vc *VoteCounter) sendShareTotal() {
+	vc.mu.Lock()
+	defer vc.mu.Unlock()
+
+	for !vc.killed() && len(vc.submissionSuccess) < len(vc.committeeMembers)-1 {
+		for i := 0; i < len(vc.committeeMembers); i++ {
+			_, alreadySubmitted := vc.submissionSuccess[i]
+			if i != vc.me && !alreadySubmitted {
+				go func(counter, index int, total int64) {
+					args := CountTotalArgs{index, total}
+					reply := CountTotalReply{}
+					vc.sendCountTotal(counter, &args, &reply)
+				}(i, vc.me+1, vc.totalCounts[vc.me+1])
+			}
+		}
+
+		vc.mu.Unlock()
+		time.Sleep(time.Duration(receiveTotalsTimeout) * time.Millisecond)
+		vc.mu.Lock()
+	}
+}
+
+func (vc *VoteCounter) sendCountTotal(counter int, args *CountTotalArgs, reply *CountTotalReply) {
+	ok := vc.committeeMembers[counter].Call("VoteCounter.CountTotal", args, reply)
+
+	if ok && reply.Success {
+		vc.mu.Lock()
+		vc.submissionSuccess[counter] = true
+		vc.mu.Unlock()
 	}
 }
 
 //
 //	Get the total of other vote counters
 //
-func (vc *VoteCounter) ShareTotal(args *SendTotalArgs, reply *SendTotalReply) {
-	if !vc.killed() && vc.stage == Ready {
+func (vc *VoteCounter) CountTotal(args *CountTotalArgs, reply *CountTotalReply) {
+	vc.mu.Lock()
+	defer vc.mu.Unlock()
 
-		vc.mu.Lock()
-		vc.totalCounts[args.Index] = args.Value
-		vc.mu.Unlock()
+	vc.totalCounts[args.Index] = args.Value
+	reply.Success = true
 
-		if done, _ := vc.Done(); !done && len(vc.totalCounts) >= vc.threshold {
-			go vc.computeWinner()
-		}
-	}
-}
-
-//
-//	Compute the winner of the election
-//
-func (vc *VoteCounter) computeWinner() {
-	if !vc.killed() {
-		vc.mu.Lock()
-		defer vc.mu.Unlock()
-
-		total := float64(0)
-		for xi, yi := range vc.totalCounts {
-			partial := float64(yi)
-			for x := range vc.totalCounts {
-				if xi != x {
-					den := x - xi
-					num := x
-					var fraction float64 = float64(num) / float64(den)
-					partial *= fraction
-				}
-			}
-			total += partial
-		}
-
-		totalVotes := int64(total) % field
-
-		if totalVotes < 0 {
-			totalVotes += field
-		}
-
-		if int(totalVotes) > vc.nVoters/2 {
-			vc.winner = 1
-		} else {
-			vc.winner = 0
-		}
+	if len(vc.totalCounts) >= vc.threshold {
+		vc.winner = computeWinner(vc.totalCounts, vc.nVoters)
 	}
 }
 
@@ -226,38 +176,7 @@ func (vc *VoteCounter) Done() (bool, int) {
 	vc.mu.Lock()
 	defer vc.mu.Unlock()
 
-	done := false
-	winner := -1
-
-	if vc.stage == Failed {
-		return true, -1
-	}
-
-	if vc.winner != -1 {
-		done = true
-		winner = vc.winner
-	}
-
-	return done, winner
-}
-
-func (vc *VoteCounter) exchangeTimeout() {
-	time.Sleep(time.Duration(exchangeTimeout) * time.Millisecond)
-
-	if !vc.killed() {
-		done, _ := vc.Done()
-		vc.mu.Lock()
-
-		if len(vc.totalCounts) >= vc.threshold {
-			if !done {
-				go vc.computeWinner()
-			}
-			vc.stage = Counting
-		} else {
-			vc.stage = Failed
-		}
-		vc.mu.Unlock()
-	}
+	return vc.winner != -1, vc.winner
 }
 
 //
