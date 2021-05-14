@@ -34,6 +34,20 @@ type VoterPersister struct {
 	voteShares []byte
 }
 
+func (vp *VoterPersister) readPersistState() []byte {
+	vp.mu.Lock()
+	defer vp.mu.Unlock()
+
+	return vp.voteShares
+}
+
+func (vp *VoterPersister) writePersistState(data []byte) {
+	vp.mu.Lock()
+	defer vp.mu.Unlock()
+
+	vp.voteShares = data
+}
+
 func makeSeed() int64 {
 	max := big.NewInt(int64(1) << 62)
 	bigx, _ := crand.Int(crand.Reader, max)
