@@ -119,7 +119,9 @@ func makeConfig(t *testing.T, nCounters, nVoters, threshold int, votes []int, un
 
 func (cfg *config) startVoting() {
 	for i := 0; i < cfg.nVoters; i++ {
-		cfg.voters[i].Vote()
+		if cfg.voters[i] != nil {
+			go cfg.voters[i].Vote()
+		}
 	}
 }
 
