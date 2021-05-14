@@ -14,19 +14,20 @@ import (
 	"6.824/labrpc"
 )
 
-type config struct {
-	mu               sync.Mutex
-	t                *testing.T
-	net              *labrpc.Network
-	nCounters        int
-	nVoters          int
-	counters         []*VoteCounter
-	voters           []*Voter
-	counterConnected []bool // whether each server is on the net
-	voterConnected   []bool
-	counterEndnames  [][]string // the port file names each sends to
-	voterEndnames    [][]string
-	saved            []*Persister
+var ncpu_once sync.Once
+
+func makeSeed() int64 {
+	max := big.NewInt(int64(1) << 62)
+	bigx, _ := crand.Int(crand.Reader, max)
+	x := bigx.Int64()
+	return x
+}
+
+func randstring(n int) string {
+	b := make([]byte, 2*n)
+	crand.Read(b)
+	s := base64.URLEncoding.EncodeToString(b)
+	return s[0:n]
 }
 
 type VoterPersister struct {
@@ -48,21 +49,28 @@ func (vp *VoterPersister) writePersistState(data []byte) {
 	vp.voteShares = data
 }
 
-func makeSeed() int64 {
-	max := big.NewInt(int64(1) << 62)
-	bigx, _ := crand.Int(crand.Reader, max)
-	x := bigx.Int64()
-	return x
+func (vp *VoterPersister) copy() *VoterPersister {
+	vp.mu.Lock()
+	defer vp.mu.Unlock()
+	np := &VoterPersister{}
+	np.voteShares = vp.voteShares
+	return np
 }
 
-func randstring(n int) string {
-	b := make([]byte, 2*n)
-	crand.Read(b)
-	s := base64.URLEncoding.EncodeToString(b)
-	return s[0:n]
+type config struct {
+	mu               sync.Mutex
+	t                *testing.T
+	net              *labrpc.Network
+	nCounters        int
+	nVoters          int
+	counters         []*VoteCounter
+	voters           []*Voter
+	counterConnected []bool // whether each server is on the net
+	voterConnected   []bool
+	counterEndnames  [][]string // the port file names each sends to
+	voterEndnames    [][]string
+	saved            []*VoterPersister
 }
-
-var ncpu_once sync.Once
 
 func makeConfig(t *testing.T, nCounters, nVoters int, votes []int, unreliable bool) *config {
 	ncpu_once.Do(func() {
@@ -84,7 +92,7 @@ func makeConfig(t *testing.T, nCounters, nVoters int, votes []int, unreliable bo
 	cfg.voterConnected = make([]bool, cfg.nVoters)
 	cfg.counterEndnames = make([][]string, cfg.nCounters)
 	cfg.voterEndnames = make([][]string, cfg.nVoters)
-	cfg.saved = make([]*Persister, cfg.nVoters)
+	cfg.saved = make([]*VoterPersister, cfg.nVoters)
 
 	cfg.setunreliable(unreliable)
 
@@ -169,7 +177,17 @@ func (cfg *config) startVoter(i, vote int) {
 		cfg.net.Connect(cfg.voterEndnames[i][j], j)
 	}
 
-	vt := MakeVoter(ends, vote, cfg.nCounters, *cfg.saved[i])
+	cfg.mu.Lock()
+
+	if cfg.saved[i] != nil {
+		cfg.saved[i] = cfg.saved[i].copy()
+	} else {
+		cfg.saved[i] = &VoterPersister{}
+	}
+
+	cfg.mu.Unlock()
+
+	vt := MakeVoter(ends, vote, cfg.nCounters, cfg.saved[i])
 
 	cfg.mu.Lock()
 	cfg.voters[i] = vt
