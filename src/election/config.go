@@ -176,6 +176,12 @@ func (cfg *config) startVoter(i, vote int) {
 	cfg.mu.Unlock()
 }
 
+func (cfg *config) startVoting() {
+	for i := 0; i < cfg.nVoters; i++ {
+		cfg.voters[i].Vote()
+	}
+}
+
 func (cfg *config) crashVoter(i int) {
 	cfg.disconnectVoter(i)
 
