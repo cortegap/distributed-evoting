@@ -20,21 +20,10 @@ func (cfg *config) voteResult() int {
 	return -1
 }
 
-func testSmallElection(t *testing.T, description string, unreliable bool) {
-	fmt.Println(description)
-	cfg := makeConfig(t, 3, 5, []int{0, 0, 0, 1, 1}, unreliable)
-
-	voteResult := cfg.voteResult()
-	if voteResult != 0 {
-		cfg.t.Fatalf("expecting result of 0, but got %v", voteResult)
-	} else {
-		fmt.Println("ok")
-	}
-}
-
 func TestInitialElection0(t *testing.T) {
 	fmt.Println("Starting simple test - 0 wins")
 	cfg := makeConfig(t, 3, 5, []int{0, 0, 0, 1, 1}, false)
+	cfg.startVoting()
 
 	voteResult := cfg.voteResult()
 	if voteResult != 0 {
@@ -42,6 +31,7 @@ func TestInitialElection0(t *testing.T) {
 	} else {
 		fmt.Println("ok")
 	}
+
 }
 
 func TestInitialElection1(t *testing.T) {
