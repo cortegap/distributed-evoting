@@ -115,6 +115,12 @@ func makeConfig(t *testing.T, nCounters, nVoters int, votes []int, unreliable bo
 	return cfg
 }
 
+func (cfg *config) startVoting() {
+	for i := 0; i < cfg.nVoters; i++ {
+		cfg.voters[i].Vote()
+	}
+}
+
 func (cfg *config) startCounter(i int) {
 	cfg.crashCounter(i)
 
@@ -194,17 +200,15 @@ func (cfg *config) startVoter(i, vote int) {
 	cfg.mu.Unlock()
 }
 
-func (cfg *config) startVoting() {
-	for i := 0; i < cfg.nVoters; i++ {
-		cfg.voters[i].Vote()
-	}
-}
-
 func (cfg *config) crashVoter(i int) {
 	cfg.disconnectVoter(i)
 
 	cfg.mu.Lock()
 	defer cfg.mu.Unlock()
+
+	if cfg.saved[i] != nil {
+		cfg.saved[i] = cfg.saved[i].copy()
+	}
 
 	vt := cfg.voters[i]
 	if vt != nil {
