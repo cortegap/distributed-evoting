@@ -63,6 +63,7 @@ type config struct {
 	net              *labrpc.Network
 	nCounters        int
 	nVoters          int
+	threshold        int
 	counters         []*VoteCounter
 	voters           []*Voter
 	counterConnected []bool // whether each server is on the net
@@ -72,7 +73,7 @@ type config struct {
 	saved            []*VoterPersister
 }
 
-func makeConfig(t *testing.T, nCounters, nVoters int, votes []int, unreliable bool) *config {
+func makeConfig(t *testing.T, nCounters, nVoters, threshold int, votes []int, unreliable bool) *config {
 	ncpu_once.Do(func() {
 		if runtime.NumCPU() < 2 {
 			fmt.Printf("warning: only one CPU, which may conceal locking bugs\n")
@@ -86,6 +87,7 @@ func makeConfig(t *testing.T, nCounters, nVoters int, votes []int, unreliable bo
 	cfg.net = labrpc.MakeNetwork()
 	cfg.nCounters = nCounters
 	cfg.nVoters = nVoters
+	cfg.threshold = threshold
 	cfg.counters = make([]*VoteCounter, cfg.nCounters)
 	cfg.voters = make([]*Voter, cfg.nVoters)
 	cfg.counterConnected = make([]bool, cfg.nCounters)
@@ -138,7 +140,7 @@ func (cfg *config) startCounter(i int) {
 		cfg.net.Connect(cfg.counterEndnames[i][j], j)
 	}
 
-	vc := MakeVoteCounter(ends, i, cfg.nVoters, cfg.nCounters)
+	vc := MakeVoteCounter(ends, i, cfg.nVoters, cfg.threshold)
 
 	cfg.mu.Lock()
 	cfg.counters[i] = vc
@@ -193,7 +195,7 @@ func (cfg *config) startVoter(i, vote int) {
 
 	cfg.mu.Unlock()
 
-	vt := MakeVoter(ends, vote, cfg.nCounters, cfg.saved[i])
+	vt := MakeVoter(ends, vote, cfg.threshold, cfg.saved[i])
 
 	cfg.mu.Lock()
 	cfg.voters[i] = vt

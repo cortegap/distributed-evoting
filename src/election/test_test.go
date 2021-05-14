@@ -22,7 +22,7 @@ func (cfg *config) voteResult() int {
 
 func TestInitialElection0(t *testing.T) {
 	fmt.Println("Starting simple test - 0 wins")
-	cfg := makeConfig(t, 3, 5, []int{0, 0, 0, 1, 1}, false)
+	cfg := makeConfig(t, 3, 5, 3, []int{0, 0, 0, 1, 1}, false)
 	cfg.startVoting()
 
 	voteResult := cfg.voteResult()
@@ -32,11 +32,13 @@ func TestInitialElection0(t *testing.T) {
 		fmt.Println("ok")
 	}
 
+	cfg.cleanup()
 }
 
 func TestInitialElection1(t *testing.T) {
 	fmt.Println("Starting simple test - 1 wins")
-	cfg := makeConfig(t, 3, 5, []int{0, 0, 1, 1, 1}, false)
+	cfg := makeConfig(t, 3, 5, 3, []int{0, 0, 1, 1, 1}, false)
+	cfg.startVoting()
 
 	voteResult := cfg.voteResult()
 	if voteResult != 1 {
@@ -44,11 +46,14 @@ func TestInitialElection1(t *testing.T) {
 	} else {
 		fmt.Println("ok")
 	}
+
+	cfg.cleanup()
 }
 
 func TestUnreliableElection0(t *testing.T) {
 	fmt.Println("Starting unreliable election test - 0 wins")
-	cfg := makeConfig(t, 3, 5, []int{0, 0, 0, 1, 1}, true)
+	cfg := makeConfig(t, 3, 5, 3, []int{0, 0, 0, 1, 1}, true)
+	cfg.startVoting()
 
 	voteResult := cfg.voteResult()
 	if voteResult != 0 {
@@ -56,11 +61,14 @@ func TestUnreliableElection0(t *testing.T) {
 	} else {
 		fmt.Println("ok")
 	}
+
+	cfg.cleanup()
 }
 
 func TestUnreliableElection1(t *testing.T) {
 	fmt.Println("Starting unreliable election test - 1 wins")
-	cfg := makeConfig(t, 3, 5, []int{0, 0, 1, 1, 1}, true)
+	cfg := makeConfig(t, 3, 5, 3, []int{0, 0, 1, 1, 1}, true)
+	cfg.startVoting()
 
 	voteResult := cfg.voteResult()
 	if voteResult != 1 {
@@ -68,4 +76,41 @@ func TestUnreliableElection1(t *testing.T) {
 	} else {
 		fmt.Println("ok")
 	}
+
+	cfg.cleanup()
+}
+
+// func TestInfiniteElection(t *testing.T) {
+// 	fmt.Println("Starting infinite election test")
+// 	cfg := makeConfig(t, 3, 5, 3, []int{0, 0, 1, 1, 1}, true)
+// 	cfg.crashVoter(2)
+
+// 	cfg.startVoting()
+// 	time.Sleep(time.Duration(5000) * time.Millisecond)
+
+// 	voteResult := cfg.voteResult()
+// 	if voteResult != -1 {
+// 		cfg.t.Fatalf("expecting no result, but got %v", voteResult)
+// 	} else {
+// 		fmt.Println("ok")
+// 	}
+
+// 	cfg.cleanup()
+// }
+
+func TestServerCrashNoRecovery(t *testing.T) {
+	fmt.Println("Starting server crash no recovery test - 1 wins")
+	cfg := makeConfig(t, 5, 7, 3, []int{0, 0, 0, 1, 1, 1, 1}, false)
+
+	cfg.crashCounter(2)
+	cfg.startVoting()
+
+	voteResult := cfg.voteResult()
+	if voteResult != 1 {
+		cfg.t.Fatalf("expecting result of 1, but got %v", voteResult)
+	} else {
+		fmt.Println("ok")
+	}
+
+	cfg.cleanup()
 }
