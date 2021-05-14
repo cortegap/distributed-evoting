@@ -56,11 +56,10 @@ type Voter struct {
 	mu   sync.Mutex
 	dead int32
 
-	voterId            int64
-	persister          Persister
-	committeeMembers   []*labrpc.ClientEnd
-	submissionSuccess  []bool
-	nSubmissionSuccess int
+	voterId           int64
+	persister         Persister
+	committeeMembers  []*labrpc.ClientEnd
+	submissionSuccess map[int]bool
 
 	vote      int
 	shares    []int64
@@ -81,7 +80,7 @@ func MakeVoter(committeeMembers []*labrpc.ClientEnd, vote, threshold int, persis
 	vt.voterId = nrand(0)
 	vt.persister = persister
 	vt.committeeMembers = committeeMembers
-	vt.submissionSuccess = make([]bool, len(committeeMembers))
+	vt.submissionSuccess = make(map[int]bool)
 
 	vt.vote = vote
 	vt.shares = make([]int64, len(committeeMembers))
@@ -156,7 +155,7 @@ func (vt *Voter) Vote() {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
 
-	for !vt.killed() && vt.nSubmissionSuccess < len(vt.shares) {
+	for !vt.killed() && len(vt.submissionSuccess) < len(vt.shares) {
 		// Send CountVote RPCs to everyone
 		for i := 0; i < len(vt.committeeMembers); i++ {
 			if !vt.submissionSuccess[i] {
@@ -184,10 +183,7 @@ func (vt *Voter) sendCountVote(counter int, args *CountVoteArgs, reply *CountVot
 	if ok && reply.Success {
 		// Update submissionSuccess as done for this server
 		vt.mu.Lock()
-		if !vt.submissionSuccess[counter] {
-			vt.submissionSuccess[counter] = true
-			vt.nSubmissionSuccess++
-		}
+		vt.submissionSuccess[counter] = true
 		vt.mu.Unlock()
 	}
 }
@@ -205,5 +201,5 @@ func (vt *Voter) Done() bool {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
 
-	return vt.nSubmissionSuccess == len(vt.shares)
+	return len(vt.submissionSuccess) == len(vt.shares)
 }

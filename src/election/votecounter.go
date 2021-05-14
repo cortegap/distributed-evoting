@@ -12,6 +12,19 @@ const receiveTotalsTimeout int32 = 500
 const votingTimeout int32 = 3000
 const exchangeTimeout int32 = 3000
 
+//
+// Add all of the votes
+//
+func addVotes(votes map[int64]int64) (votesSum int64) {
+	for _, val := range votes {
+		votesSum += val
+	}
+
+	votesSum %= field
+
+	return
+}
+
 //	Compute the winner of the election
 func computeWinner(shares map[int]int64, nVoters int) int {
 	total := float64(0)
@@ -96,26 +109,10 @@ func (vc *VoteCounter) CountVote(args *CountVoteArgs, reply *CountVoteReply) {
 	_, shareTotalSent := vc.totalCounts[vc.me+1]
 	if len(vc.votes) == vc.nVoters && !shareTotalSent {
 		// TODO: Counter ready. Send agregated
-		vc.addVotes()
+		vc.totalCounts[vc.me+1] = addVotes(vc.votes)
 
 		go vc.sendShareTotal()
 	}
-}
-
-//
-// Add all of the votes
-//
-func (vc *VoteCounter) addVotes() int64 {
-	vc.totalCounts[vc.me+1] = 0
-	for _, val := range vc.votes {
-		vc.totalCounts[vc.me+1] += val
-	}
-
-	vc.totalCounts[vc.me+1] %= field
-
-	return vc.totalCounts[vc.me+1]
-
-	return 0
 }
 
 //
