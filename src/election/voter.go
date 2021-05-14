@@ -148,10 +148,14 @@ func (vt *Voter) makeShares() {
 	}
 }
 
+func (vt *Voter) Vote() {
+	go vt.voteLoop()
+}
+
 //
 // Send votes to the vote counter until the end
 //
-func (vt *Voter) Vote() {
+func (vt *Voter) voteLoop() {
 	vt.mu.Lock()
 	defer vt.mu.Unlock()
 

@@ -66,6 +66,7 @@ type config struct {
 	threshold        int
 	counters         []*VoteCounter
 	voters           []*Voter
+	votes            []int
 	counterConnected []bool // whether each server is on the net
 	voterConnected   []bool
 	counterEndnames  [][]string // the port file names each sends to
@@ -90,6 +91,7 @@ func makeConfig(t *testing.T, nCounters, nVoters, threshold int, votes []int, un
 	cfg.threshold = threshold
 	cfg.counters = make([]*VoteCounter, cfg.nCounters)
 	cfg.voters = make([]*Voter, cfg.nVoters)
+	cfg.votes = votes
 	cfg.counterConnected = make([]bool, cfg.nCounters)
 	cfg.voterConnected = make([]bool, cfg.nVoters)
 	cfg.counterEndnames = make([][]string, cfg.nCounters)
@@ -103,7 +105,7 @@ func makeConfig(t *testing.T, nCounters, nVoters, threshold int, votes []int, un
 	}
 
 	for i := 0; i < cfg.nVoters; i++ {
-		cfg.startVoter(i, votes[i])
+		cfg.startVoter(i)
 	}
 
 	for i := 0; i < cfg.nCounters; i++ {
@@ -120,8 +122,14 @@ func makeConfig(t *testing.T, nCounters, nVoters, threshold int, votes []int, un
 func (cfg *config) startVoting() {
 	for i := 0; i < cfg.nVoters; i++ {
 		if cfg.voters[i] != nil {
-			go cfg.voters[i].Vote()
+			cfg.voters[i].Vote()
 		}
+	}
+}
+
+func (cfg *config) vote(i int) {
+	if cfg.voters[i] != nil {
+		cfg.voters[i].Vote()
 	}
 }
 
@@ -170,7 +178,7 @@ func (cfg *config) crashCounter(i int) {
 	}
 }
 
-func (cfg *config) startVoter(i, vote int) {
+func (cfg *config) startVoter(i int) {
 	cfg.crashVoter(i)
 
 	// a fresh set of outgoing ClientEnd names.
@@ -197,7 +205,7 @@ func (cfg *config) startVoter(i, vote int) {
 
 	cfg.mu.Unlock()
 
-	vt := MakeVoter(ends, vote, cfg.threshold, cfg.saved[i])
+	vt := MakeVoter(ends, cfg.votes[i], cfg.threshold, cfg.saved[i])
 
 	cfg.mu.Lock()
 	cfg.voters[i] = vt

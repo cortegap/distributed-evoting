@@ -108,7 +108,6 @@ func (vc *VoteCounter) CountVote(args *CountVoteArgs, reply *CountVoteReply) {
 
 	_, shareTotalSent := vc.totalCounts[vc.me+1]
 	if len(vc.votes) == vc.nVoters && !shareTotalSent {
-		// TODO: Counter ready. Send agregated
 		vc.totalCounts[vc.me+1] = addVotes(vc.votes)
 
 		go vc.sendShareTotal()
