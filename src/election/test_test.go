@@ -180,7 +180,3 @@ func TestServerCrashUnreliable(t *testing.T) {
 
 	cfg.cleanup()
 }
-
-// TODO: Persistor tests (& unreliable and with disconnected voters)
-// crash voters and restart them :)
-// I dont think we need to test network partitions because it seems equivaletn to crashing and restarting servers? but idk, you can try
