@@ -151,3 +151,32 @@ func TestServerCrash(t *testing.T) {
 
 	cfg.cleanup()
 }
+
+// Test crasher with servers and unreliable network
+func TestServerCrashUnreliable(t *testing.T) {
+	fmt.Println("Starting server crash unreliable result test - 0 wins")
+	cfg := makeConfig(t, 5, 7, 3, []int{0, 0, 0, 0, 1, 1, 1}, false)
+
+	cfg.crashCounter(2)
+	cfg.crashCounter(3)
+	cfg.crashCounter(4)
+
+	cfg.startVoting()
+
+	voteNoResult := cfg.voteResult()
+	if voteNoResult != -1 {
+		cfg.t.Fatalf("expecting no result, but got %v", voteNoResult)
+	}
+
+	cfg.startCounter(2)
+	cfg.connectCounter(2)
+
+	voteResult := cfg.voteResult()
+	if voteResult != 0 {
+		cfg.t.Fatalf("expecting 0, but got %v", voteResult)
+	} else {
+		fmt.Println("ok")
+	}
+
+	cfg.cleanup()
+}
