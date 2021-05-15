@@ -1,6 +1,7 @@
 package election
 
 import (
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,21 +28,24 @@ func addVotes(votes map[int64]int64) (votesSum int64) {
 
 //	Compute the winner of the election
 func computeWinner(shares map[int]int64, nVoters int) int {
-	total := float64(0)
+	total := big.NewInt(0)
 	for xi, yi := range shares {
-		partial := float64(yi)
+		partial := big.NewInt(yi)
 		for x := range shares {
 			if xi != x {
-				den := x - xi
-				num := x
-				var fraction float64 = float64(num) / float64(den)
-				partial *= fraction
+				inv := big.NewInt(1).ModInverse(big.NewInt(int64(x-xi)), big.NewInt(field))
+				num := big.NewInt(int64(x))
+				partial.Mul(partial, num)
+				partial.Mod(partial, big.NewInt(field))
+				partial.Mul(partial, inv)
+				partial.Mod(partial, big.NewInt(field))
 			}
 		}
-		total += partial
+		total.Add(total, partial)
+		total.Mod(total, big.NewInt(field))
 	}
 
-	totalVotes := int64(total) % field
+	totalVotes := total.Int64() % field
 
 	if totalVotes < 0 {
 		totalVotes += field

@@ -128,9 +128,10 @@ func TestServerCrash(t *testing.T) {
 	fmt.Println("Starting server crash result test - 1 wins")
 	cfg := makeConfig(t, 5, 7, 3, []int{0, 0, 0, 1, 1, 1, 1}, false)
 
-	cfg.crashCounter(2)
-	cfg.crashCounter(3)
-	cfg.crashCounter(4)
+	randomServer := int(nrand(5))
+	cfg.crashCounter(randomServer)
+	cfg.crashCounter((randomServer + 1) % 5)
+	cfg.crashCounter((randomServer + 2) % 5)
 
 	cfg.startVoting()
 
@@ -139,8 +140,8 @@ func TestServerCrash(t *testing.T) {
 		cfg.t.Fatalf("expecting no result, but got %v", voteNoResult)
 	}
 
-	cfg.startCounter(2)
-	cfg.connectCounter(2)
+	cfg.startCounter((randomServer + 1) % 5)
+	cfg.connectCounter((randomServer + 1) % 5)
 
 	voteResult := cfg.voteResult()
 	if voteResult != 1 {
@@ -155,11 +156,12 @@ func TestServerCrash(t *testing.T) {
 // Test crasher with servers and unreliable network
 func TestServerCrashUnreliable(t *testing.T) {
 	fmt.Println("Starting server crash unreliable result test - 0 wins")
-	cfg := makeConfig(t, 5, 7, 3, []int{0, 0, 0, 0, 1, 1, 1}, false)
+	cfg := makeConfig(t, 5, 7, 3, []int{0, 0, 0, 0, 1, 1, 1}, true)
 
-	cfg.crashCounter(2)
-	cfg.crashCounter(3)
-	cfg.crashCounter(4)
+	randomServer := int(nrand(5))
+	cfg.crashCounter(randomServer)
+	cfg.crashCounter((randomServer + 1) % 5)
+	cfg.crashCounter((randomServer + 2) % 5)
 
 	cfg.startVoting()
 
@@ -168,8 +170,8 @@ func TestServerCrashUnreliable(t *testing.T) {
 		cfg.t.Fatalf("expecting no result, but got %v", voteNoResult)
 	}
 
-	cfg.startCounter(2)
-	cfg.connectCounter(2)
+	cfg.startCounter((randomServer + 1) % 5)
+	cfg.connectCounter((randomServer + 1) % 5)
 
 	voteResult := cfg.voteResult()
 	if voteResult != 0 {
